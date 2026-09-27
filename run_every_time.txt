@@ -1,0 +1,13 @@
+& "D:\download\Compressed\pgsql\bin\pg_ctl.exe" -D "D:\postgres-data" -l "D:\postgres-data\postgres.log" start
+
+
+cd D:\gaviiii\ProctorStream
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn proctorstream_api.main:app --reload --port 8000
+
+
+
+
+
+cd D:\gaviiii\ProctorStream\frontend
+npm run dev

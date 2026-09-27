@@ -1,0 +1,143 @@
+# ProctorStream deterministic risk engine configuration (schema: risk_config.v1)
+#
+# This file is the ONLY place session risk_level/recommendation thresholds are defined.
+# The engine (src/proctorstream/risk_engine/engine.py) is a pure function of:
+#     (flags produced by feature engineering, channels_available, channels_missing) -> session_result.v1
+# It contains no trained model, no learned weights, and no calibration step (SRS CON-8).
+#
+# Risk levels and recommendations are fixed by the SRS and are not configurable here
+# (changing them would break the event/session_result contract), but every threshold,
+# duration, count and flag->level mapping below is.
+
+risk_levels: [NORMAL, WATCH, ELEVATED, HIGH]
+
+recommendations:
+  NORMAL: NO_ACTION
+  WATCH: ROUTINE_REVIEW
+  ELEVATED: HUMAN_REVIEW
+  HIGH: PRIORITY_REVIEW
+
+# Each rule reacts to exactly one flag "type" as produced by proctorstream.features.engine.generate_flags
+# (itself deterministic/threshold-based - see FLAG_RULES there). A rule never fires, and therefore
+# never contributes to risk, if its channel is in channels_missing for the session (FR-30/FR-33:
+# missing evidence must never be treated as suspicious).
+rules:
+  - rule_id: RULE-PHONE-01
+    flag_type: PHONE_USE
+    channel: environment
+    base_level: ELEVATED
+    escalate:
+      - if_duration_s_gte: 30
+        then_level: HIGH
+    description: >
+      A mobile phone or similar device was visible in the candidate's camera frame.
+
+  - rule_id: RULE-SECONDPERSON-01
+    flag_type: SECOND_PERSON
+    channel: presence
+    base_level: ELEVATED
+    escalate:
+      - if_duration_s_gte: 20
+        then_level: HIGH
+    description: >
+      More than one person was visible in frame (multiple faces or an unaccounted-for person).
+
+  - rule_id: RULE-IMPERSONATION-01
+    flag_type: IMPERSONATION
+    channel: identity
+    base_level: HIGH
+    escalate: []
+    description: >
+      The observed face did not match the enrolment reference with sufficient similarity.
+
+  - rule_id: RULE-TABSWITCH-01
+    flag_type: TAB_SWITCH
+    channel: screen
+    base_level: WATCH
+    escalate:
+      - if_count_in_session_gte: 3
+        then_level: ELEVATED
+      - if_count_in_session_gte: 6
+        then_level: HIGH
+    description: >
+      The exam tab/window lost visibility (switched away, minimised, or covered).
+
+  - rule_id: RULE-REMOTE-01
+    flag_type: REMOTE_ASSISTANCE
+    channel: audio_voice
+    base_level: ELEVATED
+    escalate:
+      - if_duration_s_gte: 20
+        then_level: HIGH
+    description: >
+      A voice other than the enrolled candidate's was detected, not attributable to a second
+      visible person (possible remote/audio assistance).
+
+  - rule_id: RULE-NOTES-01
+    flag_type: NOTE_READING
+    channel: pose
+    base_level: WATCH
+    escalate:
+      - if_duration_s_gte: 30
+        then_level: ELEVATED
+    description: >
+      Paper/notes were visible while the candidate's head was angled downward, consistent with
+      reading unauthorised material.
+
+  - rule_id: RULE-ABSENT-01
+    flag_type: CANDIDATE_ABSENT
+    channel: presence
+    base_level: WATCH
+    escalate:
+      - if_duration_s_gte: 20
+        then_level: ELEVATED
+      - if_duration_s_gte: 60
+        then_level: HIGH
+    description: >
+      No face was detected in frame for a sustained period.
+
+  - rule_id: RULE-GAZE-01
+    flag_type: SUSTAINED_GAZE_AWAY
+    channel: attention
+    base_level: WATCH
+    escalate:
+      - if_duration_s_gte: 45
+        then_level: ELEVATED
+    description: >
+      The candidate's gaze was sustained away from the screen.
+
+  - rule_id: RULE-LIVENESS-01
+    flag_type: LIVENESS_FAIL
+    channel: liveness
+    base_level: HIGH
+    escalate: []
+    description: >
+      The presentation-attack-detection (anti-spoof) check failed, indicating a possible
+      photo/video/mask spoof of the candidate.
+
+# Session-level aggregation on top of the per-flag rule outcomes above.
+session_aggregation:
+  # The session risk_level is the maximum level reached by any single triggered rule...
+  base_method: MAX_OF_TRIGGERED_RULES
+  # ...then this escalation can raise (never lower) that level further when several
+  # *independent* concern types co-occur in one session, even if none alone reached HIGH.
+  multi_flag_escalation:
+    - if_distinct_rule_types_gte: 3
+      min_level: ELEVATED
+      description: "3+ independent concern types in one session are escalated to at least ELEVATED."
+    - if_distinct_rule_types_gte: 4
+      min_level: HIGH
+      description: "4+ independent concern types in one session are escalated to HIGH."
+
+# A missing channel is recorded on the session result but by construction (rules only fire for
+# available channels) can only ever leave risk unchanged or push toward DEGRADED bookkeeping -
+# never raise risk_level (FR-33).
+missing_channel_policy: NEVER_INCREASES_RISK
+
+# If 2 or more of these "critical" channels are unavailable for a session, the session is marked
+# degraded (session_result.v1 "degraded": true) so reviewers know the assessment is based on
+# incomplete evidence, in addition to (not instead of) whatever risk_level the available evidence
+# produced.
+degraded_mode:
+  critical_channels: [presence, identity, environment]
+  min_missing_for_degraded: 2

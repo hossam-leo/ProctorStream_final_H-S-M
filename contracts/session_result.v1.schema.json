@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proctorstream.local/contracts/session_result.v1.schema.json",
+  "title": "session_result.v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "session_id",
+    "risk_level",
+    "recommendation",
+    "overall_risk",
+    "calibrated",
+    "confidence_band",
+    "flags",
+    "top_contributors",
+    "channels_available",
+    "channels_missing",
+    "degraded",
+    "engine",
+    "model_version",
+    "feature_version"
+  ],
+  "properties": {
+    "schema": {
+      "const": "session_result.v1"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "risk_level": {
+      "enum": [
+        "NORMAL",
+        "WATCH",
+        "ELEVATED",
+        "HIGH"
+      ]
+    },
+    "recommendation": {
+      "enum": [
+        "NO_ACTION",
+        "ROUTINE_REVIEW",
+        "HUMAN_REVIEW",
+        "PRIORITY_REVIEW"
+      ]
+    },
+    "overall_risk": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Legacy 0..1 display value derived from risk_level for backward-compatible charts. Not a probability."
+    },
+    "calibrated": {
+      "const": false,
+      "description": "Always false: the risk engine is rule-based, not a calibrated model."
+    },
+    "confidence_band": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "flag_id",
+          "type",
+          "rule_id",
+          "channel",
+          "t_start_ms",
+          "t_end_ms",
+          "confidence",
+          "resulting_level",
+          "explanation"
+        ],
+        "properties": {
+          "flag_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "presence",
+              "identity",
+              "liveness",
+              "attention",
+              "environment",
+              "pose",
+              "audio_voice",
+              "audio_event",
+              "screen",
+              "device",
+              "behavioral"
+            ]
+          },
+          "t_start_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "t_end_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "resulting_level": {
+            "enum": [
+              "NORMAL",
+              "WATCH",
+              "ELEVATED",
+              "HIGH"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triggering_events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "top_contributors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule_id",
+          "flag_type",
+          "level",
+          "explanation"
+        ],
+        "properties": {
+          "rule_id": {
+            "type": "string"
+          },
+          "flag_type": {
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "NORMAL",
+              "WATCH",
+              "ELEVATED",
+              "HIGH"
+            ]
+          },
+          "explanation": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "channels_available": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "presence",
+          "identity",
+          "liveness",
+          "attention",
+          "environment",
+          "pose",
+          "audio_voice",
+          "audio_event",
+          "screen",
+          "device",
+          "behavioral"
+        ]
+      }
+    },
+    "channels_missing": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "presence",
+          "identity",
+          "liveness",
+          "attention",
+          "environment",
+          "pose",
+          "audio_voice",
+          "audio_event",
+          "screen",
+          "device",
+          "behavioral"
+        ]
+      }
+    },
+    "suppressed_missing_channel_flags": {
+      "type": "array",
+      "description": "Flags that would have applied but were suppressed because their channel was missing (FR-33 audit trail).",
+      "items": {
+        "type": "object"
+      }
+    },
+    "degraded": {
+      "type": "boolean"
+    },
+    "engine": {
+      "const": "rule_based"
+    },
+    "model_version": {
+      "type": "string"
+    },
+    "rules_version": {
+      "type": "string"
+    },
+    "feature_version": {
+      "type": "string"
+    }
+  }
+}

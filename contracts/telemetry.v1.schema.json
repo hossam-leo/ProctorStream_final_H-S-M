@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proctorstream.local/contracts/telemetry.v1.schema.json",
+  "title": "telemetry.v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "session_id",
+    "ts_ms",
+    "seq",
+    "capture_state",
+    "camera_state",
+    "microphone_state"
+  ],
+  "properties": {
+    "schema": {
+      "const": "telemetry.v1"
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_\\-]{3,64}$"
+    },
+    "ts_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic per-session sequence number so gaps/reordering/drops are detectable."
+    },
+    "capture_state": {
+      "enum": [
+        "RECORDING",
+        "PAUSED",
+        "STOPPED",
+        "ERROR",
+        "UNKNOWN"
+      ]
+    },
+    "camera_state": {
+      "enum": [
+        "ACTIVE",
+        "PERMISSION_DENIED",
+        "DEVICE_UNAVAILABLE",
+        "UNKNOWN"
+      ]
+    },
+    "microphone_state": {
+      "enum": [
+        "ACTIVE",
+        "PERMISSION_DENIED",
+        "DEVICE_UNAVAILABLE",
+        "UNKNOWN"
+      ]
+    },
+    "sampling_state": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "FULL",
+            "ADAPTIVE_REDUCED",
+            "MINIMAL"
+          ]
+        },
+        "fps": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 60
+        }
+      }
+    },
+    "heartbeat": {
+      "type": "boolean",
+      "description": "True on periodic keep-alive telemetry with no state change."
+    },
+    "client_metrics": {
+      "type": "object",
+      "properties": {
+        "dropped_frames": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cpu_load_estimate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "network_rtt_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "virtual_camera_detected": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "null/absent means UNKNOWN, never false-by-default."
+    },
+    "integrity": {
+      "type": "object",
+      "description": "Abstraction point for a future telemetry-signing scheme; optional and absent by default.",
+      "properties": {
+        "signed": {
+          "type": "boolean"
+        },
+        "signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
