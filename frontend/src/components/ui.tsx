@@ -7,8 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { SessionStatus } from "../lib/api";
-import { STATUS_LABEL, statusTone } from "../lib/format";
+import { operatorName, type SessionStatus } from "../lib/api";
+import { STATUS_LABEL, statusTone, riskTone } from "../lib/format";
 
 // ---------- data loading ----------
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
@@ -100,6 +100,67 @@ export function Badge({ tone = "neutral", children, plain }: { tone?: string; ch
 
 export function StatusBadge({ status }: { status: SessionStatus }) {
   return <Badge tone={statusTone(status)}>{STATUS_LABEL[status] ?? status}</Badge>;
+}
+
+/** The one place a bare risk level (NORMAL/WATCH/ELEVATED/HIGH) becomes UI: consistent colour,
+ * consistent "degraded" annotation, everywhere a session's risk is shown. */
+export function RiskBadge({ level, degraded, size = "md" }: { level?: string | null; degraded?: boolean | null; size?: "sm" | "md" | "lg" }) {
+  if (!level) return <span className="faint">—</span>;
+  return (
+    <span className={`risk-badge risk-badge-${size} risk-${riskTone(level)}`}>
+      <span className="risk-badge-level">{level}</span>
+      {degraded && <span className="risk-badge-degraded" title="Degraded: one or more channels were unavailable for this session">degraded</span>}
+    </span>
+  );
+}
+
+/** Top-of-page metric row (dashboard, review queue). Value first, label under it, optional note
+ * and tone accent so "is this good or bad" reads at a glance without opening the card. */
+export function StatGrid({ items }: { items: { label: string; value: ReactNode; note?: ReactNode; tone?: string }[] }) {
+  return (
+    <div className="stat-grid">
+      {items.map((s, i) => (
+        <div className={`stat-card ${s.tone ? `stat-${s.tone}` : ""}`} key={i}>
+          <div className="stat-value">{s.value}</div>
+          <div className="stat-label">{s.label}</div>
+          {s.note && <div className="stat-note">{s.note}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Horizontal stacked bar for a small set of mutually-exclusive counts (risk tiers, review tiers).
+ * Segments are proportional to share of total; a legend below carries the exact counts. */
+export function DistributionBar({
+  segments,
+}: {
+  segments: { label: string; value: number; tone: string }[];
+}) {
+  const total = segments.reduce((a, s) => a + s.value, 0);
+  return (
+    <div>
+      <div className="dist-bar" role="img" aria-label="Distribution">
+        {total === 0 ? (
+          <span className="dist-seg dist-neutral" style={{ width: "100%" }} />
+        ) : (
+          segments
+            .filter((s) => s.value > 0)
+            .map((s, i) => (
+              <span key={i} className={`dist-seg dist-${s.tone}`} style={{ width: `${(s.value / total) * 100}%` }} title={`${s.label}: ${s.value}`} />
+            ))
+        )}
+      </div>
+      <div className="dist-legend">
+        {segments.map((s, i) => (
+          <span className="dist-legend-item" key={i}>
+            <i className={`dist-dot dist-${s.tone}`} aria-hidden />
+            {s.label} <strong className="num">{s.value.toLocaleString()}</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function Loading({ label = "Loading…" }: { label?: string }) {
@@ -287,6 +348,8 @@ const P: Record<string, string> = {
   model: "M4 19V9M10 19V5M16 19v-7M22 19H2",
   fairness: "M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z",
   plus: "M12 5v14M5 12h14",
+  settings: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+  user: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
 };
 export function Icon({ name, size = 18 }: { name: keyof typeof P | string; size?: number }) {
   return (
@@ -294,5 +357,30 @@ export function Icon({ name, size = 18 }: { name: keyof typeof P | string; size?
       strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d={P[name] ?? ""} />
     </svg>
+  );
+}
+
+/** Operator name for the audit log. One component, used by the sidebar and the Settings page so
+ * both always write the same localStorage key. */
+export function OperatorField({ label = "Operator name (for the audit log)" }: { label?: string }) {
+  const [name, setName] = useState(operatorName() === "operator" ? "" : operatorName());
+  return (
+    <label>
+      <span className="muted">{label}</span>
+      <input
+        className="input operator-input"
+        value={name}
+        placeholder="Your name"
+        maxLength={80}
+        onChange={(e) => {
+          setName(e.target.value);
+          try {
+            localStorage.setItem("ps.operator", e.target.value.trim() || "operator");
+          } catch {
+            /* storage unavailable: the audit log records "operator" */
+          }
+        }}
+      />
+    </label>
   );
 }

@@ -114,3 +114,52 @@ export function featureLabel(f: string): string {
   const a = agg ? ` (${agg.replace(/_/g, " ").replace(/^w(\d+)/, "$1 s window,")})` : "";
   return (f.startsWith("bn_") ? "vs own baseline: " : "") + nice + a;
 }
+
+/** Display-only wording for text that arrives from the server. The API's internal identifiers keep
+ * their original names (they are contracts); people see "recorded" instead. */
+export function plainText(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/\bmock[-_ ]sessions?\b/gi, (m) => (/s$/i.test(m) ? "recorded sessions" : "recorded session"))
+    .replace(/\bmock (recordings?|corpus)\b/gi, "recorded $1")
+    .replace(/\bmock\b/gi, "recorded");
+}
+
+// ---- risk levels (session_result.v1 / risk_assessment.v1: NORMAL < WATCH < ELEVATED < HIGH) ----
+// Single source of truth for risk-level colour coding — used by RiskBadge and anywhere a bare
+// risk level or recommendation tier needs a consistent tone across the app.
+export const RISK_LEVELS = ["NORMAL", "WATCH", "ELEVATED", "HIGH"] as const;
+export function riskTone(level: string | null | undefined): "ok" | "info" | "warn" | "bad" | "neutral" {
+  switch (level) {
+    case "HIGH":
+    case "PRIORITY_REVIEW":
+      return "bad";
+    case "ELEVATED":
+    case "HUMAN_REVIEW":
+      return "warn";
+    case "WATCH":
+    case "ROUTINE_REVIEW":
+      return "info";
+    case "NORMAL":
+    case "NO_ACTION":
+      return "ok";
+    default:
+      return "neutral";
+  }
+}
+
+// Dark-theme-safe SVG palette shared by the hand-rolled charts and the session timeline. The
+// component-scoped literals that used to live in Timeline.tsx / Charts.tsx / SessionDetailPage.tsx
+// assumed a light background (near-black text, near-white tracks) and were unreadable once the app
+// moved to the dark design system — this is the single place to fix that.
+export const CHART = {
+  text: "#93a5b8",       // axis / tick labels
+  textDim: "#5f7082",    // secondary labels
+  grid: "rgba(163,185,207,0.14)",
+  track: "rgba(255,255,255,0.07)",
+  ink: "#eaf6fb",        // playhead / focal marks — must read clearly on dark panels
+  accent: "#36c9dc",
+  accent2: "#7c9bff",
+  truth: "#ff6471",      // ground-truth violation — matches --bad
+  cue: "#f5b84b",        // scripted cue — matches --warn
+} as const;

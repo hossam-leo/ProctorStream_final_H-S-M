@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { fmtClock } from "../lib/format";
+import { CHART, fmtClock } from "../lib/format";
 
 export interface Lane {
   label: string;
   color: string;
-  intervals?: { start: number; end: number; title?: string }[];
+  intervals?: { start: number; end: number; title?: string; color?: string; id?: string }[];
   marks?: { t: number; title?: string }[];
 }
 
@@ -14,11 +14,17 @@ export function Timeline({
   lanes,
   playheadMs,
   onSeek,
+  highlightId,
+  onIntervalClick,
 }: {
   durationMs: number;
   lanes: Lane[];
   playheadMs?: number | null;
   onSeek?: (ms: number) => void;
+  /** Interval id (e.g. a flag_id) to emphasise — keeps the timeline and flag list visually linked. */
+  highlightId?: string | null;
+  /** Clicking an interval that carries an id reports it, then the click does not also seek. */
+  onIntervalClick?: (id: string, startMs: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(900);
@@ -62,10 +68,10 @@ export function Timeline({
           const y = top + i * laneH;
           return (
             <g key={lane.label}>
-              <text x={0} y={y + 17} fontSize="12.5" fill="#5a6878">
+              <text x={0} y={y + 17} fontSize="12.5" fill={CHART.text}>
                 {lane.label}
               </text>
-              <rect x={labelW} y={y + 4} width={W - labelW - 8} height={laneH - 8} rx={3} fill="#eef1f4" />
+              <rect x={labelW} y={y + 4} width={W - labelW - 8} height={laneH - 8} rx={3} fill={CHART.track} />
               {(lane.intervals ?? []).map((iv, k) => (
                 <rect
                   key={k}
@@ -74,7 +80,18 @@ export function Timeline({
                   width={Math.max(2, x(iv.end) - x(iv.start))}
                   height={laneH - 8}
                   rx={2}
-                  fill={lane.color}
+                  fill={iv.color ?? lane.color}
+                  stroke={iv.id && iv.id === highlightId ? CHART.ink : "none"}
+                  strokeWidth={iv.id && iv.id === highlightId ? 2 : 0}
+                  style={iv.id && onIntervalClick ? { cursor: "pointer" } : undefined}
+                  onClick={
+                    iv.id && onIntervalClick
+                      ? (e) => {
+                          e.stopPropagation();
+                          onIntervalClick(iv.id!, iv.start);
+                        }
+                      : undefined
+                  }
                 >
                   {iv.title && <title>{iv.title}</title>}
                 </rect>
@@ -89,14 +106,14 @@ export function Timeline({
         })}
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={x(t)} x2={x(t)} y1={top} y2={H - axisH + 4} stroke="#dce1e7" strokeWidth={1} />
-            <text x={x(t)} y={H - 4} fontSize="12" fill="#8a96a3" textAnchor="middle">
+            <line x1={x(t)} x2={x(t)} y1={top} y2={H - axisH + 4} stroke={CHART.grid} strokeWidth={1} />
+            <text x={x(t)} y={H - 4} fontSize="12" fill={CHART.textDim} textAnchor="middle">
               {fmtClock(t)}
             </text>
           </g>
         ))}
         {playheadMs != null && (
-          <line x1={x(playheadMs)} x2={x(playheadMs)} y1={top - 2} y2={H - axisH + 6} stroke="#0c1f33" strokeWidth={2} />
+          <line x1={x(playheadMs)} x2={x(playheadMs)} y1={top - 2} y2={H - axisH + 6} stroke={CHART.ink} strokeWidth={2} />
         )}
       </svg>
     </div>

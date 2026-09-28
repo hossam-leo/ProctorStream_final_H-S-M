@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Badge, Empty, ErrorNotice, Facts, Loading, PageHeader, Panel, useAsync } from "../components/ui";
+import { Badge, DistributionBar, Empty, ErrorNotice, Loading, PageHeader, Panel, RiskBadge, StatGrid, useAsync } from "../components/ui";
 import { api } from "../lib/api";
 import { fmtDuration, fmtInt, fmtPct, REC_LABEL, recTone, titleCase } from "../lib/format";
 
@@ -26,16 +26,28 @@ export default function ReviewQueuePage() {
         title="Review queue"
         description="Sessions ordered by risk level from the deterministic rule engine. Work from the top; every decision is yours, the ordering only decides priority."
       />
-      <Facts
+      <StatGrid
         items={[
-          { label: "Priority review", value: fmtInt(c.PRIORITY_REVIEW ?? 0) },
-          { label: "Human review", value: fmtInt(c.HUMAN_REVIEW ?? 0) },
-          { label: "Routine review", value: fmtInt(c.ROUTINE_REVIEW ?? 0) },
-          { label: "No action", value: fmtInt(c.NO_ACTION ?? 0), note: `${fmtInt(scored)} sessions scored` },
+          { label: "Priority review", value: fmtInt(c.PRIORITY_REVIEW ?? 0), note: "High risk", tone: (c.PRIORITY_REVIEW ?? 0) > 0 ? "bad" : "ok" },
+          { label: "Human review", value: fmtInt(c.HUMAN_REVIEW ?? 0), note: "Elevated risk", tone: (c.HUMAN_REVIEW ?? 0) > 0 ? "warn" : "ok" },
+          { label: "Routine review", value: fmtInt(c.ROUTINE_REVIEW ?? 0), note: "Watch", tone: "info" },
+          { label: "No action", value: fmtInt(c.NO_ACTION ?? 0), note: `${fmtInt(scored)} sessions scored`, tone: "ok" },
           { label: "Reviewed", value: fmtInt(summary.data?.reviews ?? 0),
             note: summary.data?.overturn_rate != null ? `${fmtPct(summary.data.overturn_rate)} found no concern` : "no decisions yet" },
         ]}
       />
+      {scored > 0 && (
+        <div style={{ margin: "18px 0" }}>
+          <DistributionBar
+            segments={[
+              { label: "Normal", value: c.NO_ACTION ?? 0, tone: "ok" },
+              { label: "Watch", value: c.ROUTINE_REVIEW ?? 0, tone: "info" },
+              { label: "Elevated", value: c.HUMAN_REVIEW ?? 0, tone: "warn" },
+              { label: "High", value: c.PRIORITY_REVIEW ?? 0, tone: "bad" },
+            ]}
+          />
+        </div>
+      )}
       <Panel flush className="" >
         <div className="filters">
           <div className="segmented" role="group" aria-label="Tier">
@@ -61,7 +73,7 @@ export default function ReviewQueuePage() {
                   {q.data.items.map((i) => (
                     <tr key={i.session_id} className="clickable" onClick={() => nav(`/sessions/${i.session_id}`)}>
                       <td className="nowrap">{i.participant_code ?? i.session_id}<div className="small faint">{i.source === "MOCK" ? "Recorded" : "Simulated"}</div></td>
-                      <td className="num"><strong>{i.risk_level ?? "—"}</strong>{i.degraded && <div className="small faint">degraded</div>}</td>
+                      <td className="num"><RiskBadge level={i.risk_level} degraded={i.degraded} size="sm" /></td>
                       <td><Badge tone={recTone(i.recommendation)}>{REC_LABEL[i.recommendation]}</Badge></td>
                       <td className="small">{i.top_reason}</td>
                       <td className="small muted nowrap">{titleCase(i.lighting)} light, {i.webcam_class?.toUpperCase()}</td>

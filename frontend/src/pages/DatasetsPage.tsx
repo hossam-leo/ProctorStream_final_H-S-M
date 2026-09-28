@@ -67,7 +67,7 @@ function DatasetView({ d }: { d: Dataset }) {
       <div className="notice notice-warn">
         <strong>Detector error rates are estimates.</strong>
         The simulator uses the SRS's planning estimates (DR-3), made more pessimistic. They will be replaced by rates
-        measured on the consented mock corpus (FR-6).
+        measured on the consented recorded corpus (FR-6).
       </div>
       <div className="grid-2">
         <Panel title="Behaviour profiles" description="Sessions per profile. Violating profiles are highlighted.">
@@ -175,8 +175,8 @@ export default function DatasetsPage() {
 
   return (
     <>
-      <PageHeader title="Datasets" description="The consented mock corpus and the simulated dataset versions." />
-      <Panel title="Mock corpus" description="Consented recordings from volunteers (FR-2 target: 60 sessions across 3 lighting and 2 webcam conditions).">
+      <PageHeader title="Datasets" description="The consented recorded corpus and the simulated dataset versions." />
+      <Panel title="Recorded corpus" description="Consented recordings from volunteers (FR-2 target: 60 sessions across 3 lighting and 2 webcam conditions).">
         {cov.data ? (
           <div className="grid-2">
             <CoverageSummary c={cov.data} />

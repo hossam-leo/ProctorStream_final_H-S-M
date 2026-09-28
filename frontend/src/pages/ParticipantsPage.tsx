@@ -38,7 +38,7 @@ export default function ParticipantsPage() {
     <>
       <PageHeader
         title="Participants"
-        description="Adults who volunteer for mock sessions. Each is identified by a code; names appear only on consent records."
+        description="Adults who volunteer for recorded sessions. Each is identified by a code; names appear only on consent records."
         actions={
           <button className="btn btn-primary" onClick={() => setRegistering(true)}>
             Register participant

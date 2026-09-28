@@ -1,14 +1,36 @@
 import { useEffect, useState } from "react";
 import { API, api, type Assessment, type Job, type SessionDetail } from "../lib/api";
-import { fmtClock, fmtDateTime, REC_LABEL, recTone, titleCase, VERDICT_LABEL } from "../lib/format";
-import { Badge, Field, Panel, useAsync, useToast } from "./ui";
+import { fmtClock, fmtDateTime, REC_LABEL, recTone, riskTone, titleCase, VERDICT_LABEL } from "../lib/format";
+import { Badge, Field, Panel, RiskBadge, useToast } from "./ui";
 
 const VERDICTS = ["NO_CONCERN", "INCONCLUSIVE", "CONCERN_CONFIRMED"] as const;
 
-export function AssessmentPanel({ session, onChange }: { session: SessionDetail; onChange: () => void }) {
+export function AssessmentPanel({
+  session,
+  onChange,
+  assessment,
+  assessmentLoading,
+  reloadAssessment,
+  hasVideo,
+  onSeekMs,
+  activeFlagId,
+  onSelectFlag,
+}: {
+  session: SessionDetail;
+  onChange: () => void;
+  /** Fetched once by the page so the timeline, summary and this panel all read the same assessment. */
+  assessment: Assessment | null;
+  assessmentLoading: boolean;
+  reloadAssessment: () => void;
+  hasVideo: boolean;
+  onSeekMs: (ms: number) => void;
+  activeFlagId: string | null;
+  onSelectFlag: (id: string | null) => void;
+}) {
   const toast = useToast();
   const sealed = session.source === "SIMULATED" && session.split === "holdout";
-  const ra = useAsync(() => (sealed ? Promise.resolve(null) : api.get<Assessment | null>(`/sessions/${session.id}/assessment`)), [session.id, session.status]);
+  const ra = { data: assessment, loading: assessmentLoading, reload: reloadAssessment };
+  const [showAll, setShowAll] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [verdict, setVerdict] = useState<string>("");
   const [note, setNote] = useState("");
@@ -105,12 +127,21 @@ export function AssessmentPanel({ session, onChange }: { session: SessionDetail;
       )}
       {a && !running && (
         <div className="stack">
-          <div className="row" style={{ gap: 14, alignItems: "baseline" }}>
-            <span style={{ fontSize: 30, fontWeight: 600, color: "var(--ink)" }} className="num">{a.risk_level}</span>
-            <span className="small muted num">display band {a.confidence_band[0].toFixed(2)}–{a.confidence_band[1].toFixed(2)}</span>
+          <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <RiskBadge level={a.risk_level} degraded={a.degraded} size="lg" />
             <Badge tone={recTone(a.recommendation)}>{REC_LABEL[a.recommendation]}</Badge>
-            {a.degraded && <Badge plain tone="warn">Degraded — incomplete evidence</Badge>}
+            <span className="small muted num">display band {a.confidence_band[0].toFixed(2)}–{a.confidence_band[1].toFixed(2)}</span>
           </div>
+          <div className="summary-strip">
+            <div><div className="k">Risk level</div><div className="v">{titleCase(a.risk_level)}</div></div>
+            <div><div className="k">Recommendation</div><div className="v">{REC_LABEL[a.recommendation]}</div></div>
+            <div><div className="k">Flags</div><div className="v num">{a.flags.length}</div></div>
+            <div><div className="k">Channels available</div><div className="v num">{a.channels_available.length}</div></div>
+            <div><div className="k">Channels missing</div><div className="v num">{a.channels_missing.length}</div></div>
+          </div>
+          {a.degraded && (
+            <div className="notice notice-warn"><strong>Degraded — incomplete evidence.</strong> A critical channel was unavailable, so this assessment rests on less than the full signal set.</div>
+          )}
           <div>
             <h3 style={{ marginBottom: 6 }}>Why</h3>
             {a.top_contributors.length === 0 && <p className="small muted" style={{ margin: 0 }}>No rule fired — nothing to review.</p>}
@@ -124,25 +155,75 @@ export function AssessmentPanel({ session, onChange }: { session: SessionDetail;
           </div>
           {a.flags.length > 0 && (
             <div>
-              <h3 style={{ marginBottom: 6 }}>Moments to check</h3>
-              <table className="table">
-                <tbody>
-                  {a.flags.slice(0, 12).map((f) => (
-                    <tr key={f.flag_id}>
-                      <td className="small nowrap num">{fmtClock(f.t_start_ms)}–{fmtClock(f.t_end_ms)}</td>
-                      <td className="small">{f.explanation}</td>
-                      <td className="small num muted">{f.confidence.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {a.flags.length > 12 && <p className="small muted">{a.flags.length - 12} more in the reviewer report.</p>}
+              <h3 style={{ marginBottom: 8 }}>Flags and evidence</h3>
+              <p className="small muted" style={{ margin: "0 0 10px" }}>
+                Each flag shows how it was reached: the detected event, the rule that evaluated it, the flag it produced, and the recording it points to.
+              </p>
+              <div className="flag-list">
+                {(showAll ? a.flags : a.flags.slice(0, 6)).map((f) => {
+                  const lvl = f.resulting_level;
+                  const active = activeFlagId === f.flag_id;
+                  return (
+                    <div
+                      key={f.flag_id}
+                      className={`flag-card risk-tone-${riskTone(lvl)} ${active ? "active" : ""}`}
+                      onClick={() => onSelectFlag(active ? null : f.flag_id)}
+                    >
+                      <div className="flag-head">
+                        <span className="flag-title">{titleCase(f.type)}</span>
+                        <span className="row" style={{ gap: 8 }}>
+                          {lvl && <RiskBadge level={lvl} size="sm" />}
+                          <span className="small muted num" title="Detector confidence">conf. {f.confidence.toFixed(2)}</span>
+                        </span>
+                      </div>
+                      <div className="flag-meta">
+                        <span className="num">{fmtClock(f.t_start_ms)}–{fmtClock(f.t_end_ms)}</span>
+                        {f.duration_s != null && <span className="num">{f.duration_s} s</span>}
+                        {f.channel && <span className="pill">{titleCase(f.channel)}</span>}
+                      </div>
+                      <div className="small">{f.explanation}</div>
+                      <div className="chain" aria-label="How this flag was reached">
+                        <span className="chain-node">Event <code>{(f.triggering_events ?? [f.flag_id]).join(", ")}</code></span>
+                        <span className="chain-arrow" aria-hidden>→</span>
+                        <span className="chain-node">Rule <code>{f.rule_id ?? "—"}</code></span>
+                        <span className="chain-arrow" aria-hidden>→</span>
+                        <span className="chain-node">Flag <code>{f.flag_id}</code></span>
+                        <span className="chain-arrow" aria-hidden>→</span>
+                        {f.evidence_ref && hasVideo ? (
+                          <button
+                            className="btn btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectFlag(f.flag_id);
+                              onSeekMs(f.t_start_ms);
+                            }}
+                          >
+                            Evidence: play {fmtClock(f.t_start_ms)}
+                          </button>
+                        ) : (
+                          <span className="chain-node">{f.evidence_ref ? "Evidence: recording not stored" : "Evidence: none referenced"}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {a.flags.length > 6 && (
+                <button className="btn btn-sm btn-ghost" style={{ marginTop: 10 }} onClick={() => setShowAll((v) => !v)}>
+                  {showAll ? "Show fewer" : `Show all ${a.flags.length} flags`}
+                </button>
+              )}
             </div>
           )}
-          {a.channels_missing.length > 0 && (
-            <p className="small muted" style={{ margin: 0 }}>
-              Unavailable: {a.channels_missing.map(titleCase).join(", ")}. Missing signals never raise the risk level.
-            </p>
+          {(a.channels_available.length > 0 || a.channels_missing.length > 0) && (
+            <div>
+              <h3 style={{ marginBottom: 6 }}>Signal coverage</h3>
+              <div className="channel-pills">
+                {a.channels_available.map((c) => <span key={c} className="pill pill-ok">{titleCase(c)}</span>)}
+                {a.channels_missing.map((c) => <span key={c} className="pill pill-miss" title="Unavailable for this session">{titleCase(c)} · unavailable</span>)}
+              </div>
+              {a.channels_missing.length > 0 && <p className="small muted" style={{ margin: "8px 0 0" }}>Missing signals never raise the risk level.</p>}
+            </div>
           )}
           <div>
             <h3 style={{ marginBottom: 6 }}>Reviewer decision</h3>

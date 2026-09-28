@@ -1,3 +1,4 @@
+import { plainText } from "./format";
 // Typed client for the ProctorStream API. All requests go to /api (proxied to the backend).
 
 export const API = "/api";
@@ -42,7 +43,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (!res.ok) {
     const detail = (data as { detail?: unknown } | null)?.detail;
-    const msg = typeof detail === "string" ? detail : `The request failed (${res.status}).`;
+    const msg = typeof detail === "string" ? plainText(detail) : `The request failed (${res.status}).`;
     throw new ApiError(res.status, msg);
   }
   return data as T;
@@ -80,7 +81,7 @@ export function uploadFile(
         data = null;
       }
       if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new ApiError(xhr.status, data?.detail || `Upload failed (${xhr.status}).`));
+      else reject(new ApiError(xhr.status, plainText(data?.detail) || `Upload failed (${xhr.status}).`));
     };
     xhr.onerror = () => reject(new ApiError(0, "The upload was interrupted. Check the connection and try again."));
     xhr.onabort = () => reject(new ApiError(0, "Upload cancelled."));
@@ -257,7 +258,10 @@ export interface Flag {
   explanation: string;
   evidence_ref?: string | null;
   rule_id?: string;
+  channel?: string;
+  duration_s?: number;
   resulting_level?: RiskLevel;
+  triggering_events?: string[];
 }
 export interface Assessment {
   schema: string;
@@ -285,4 +289,51 @@ export interface Job {
   stage: string | null;
   progress: number;
   message: string | null;
+}
+
+// ---- observability (SRS Section 20) ----
+/** GET /metrics — point-in-time counters. Fields the environment cannot measure are null, not
+ * fabricated; the UI must show those as an explicit "not measured" state, never as zero. */
+export interface Metrics {
+  active_sessions: number;
+  event_count_total: number;
+  dropped_or_rejected_events_total: number;
+  detector_unknown_events_total: number;
+  degraded_sessions: number | null;
+  queue_depth: number | null;
+  inference_latency_ms: number | null;
+  ingest_latency_ms: number | null;
+  time: string;
+}
+export interface SystemStatus {
+  health: { status: string; version: string; contracts: string[]; checks: Record<string, string> };
+  schema_revision: string;
+  row_counts: Record<string, number>;
+  storage: { backend: string; used_bytes: number; stored_recordings: number };
+  channels: string[];
+  consent_version: string;
+  pipeline: { stage: string; state: "available" | "not_built" | "not_installed" }[];
+}
+/** GET /review-queue — counts are global (every scored session, independent of the ?tier filter),
+ * so a single low-limit call is enough to read review-load and risk-distribution totals. */
+export interface ReviewQueueItem {
+  session_id: string;
+  risk: number;
+  risk_level?: RiskLevel;
+  degraded?: boolean;
+  recommendation: Recommendation;
+  band: [number, number];
+  n_flags: number;
+  source: string;
+  status: string;
+  participant_code: string | null;
+  lighting: string;
+  webcam_class: string;
+  duration_s: number;
+  top_reason: string | null;
+}
+export interface ReviewQueue {
+  total: number;
+  counts: Record<string, number>;
+  items: ReviewQueueItem[];
 }

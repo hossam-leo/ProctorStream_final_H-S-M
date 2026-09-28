@@ -1,16 +1,14 @@
-// The practice quiz participants answer during a mock session. It has no scoring consequence;
-// it exists so the session contains genuine typing, reading and tab activity.
+// Practice exam questions shown during a recorded session.
+// They are intentionally varied to exercise reading, reasoning and typing activity.
 export const QUIZ: { id: string; q: string }[] = [
-  { id: "q1", q: "In your own words, explain the difference between weather and climate." },
-  { id: "q2", q: "A train leaves at 09:40 and arrives at 13:15. How long is the journey?" },
-  { id: "q3", q: "Name three renewable sources of energy and one drawback of each." },
-  { id: "q4", q: "What is 15% of 240? Show how you worked it out." },
-  { id: "q5", q: "Summarise the plot of a book or film you know well in three sentences." },
-  { id: "q6", q: "Why do objects float or sink in water?" },
-  { id: "q7", q: "Write a short email declining an invitation politely." },
-  { id: "q8", q: "A rectangle is 12 cm by 7 cm. What are its area and its perimeter?" },
-  { id: "q9", q: "Describe one advantage and one risk of remote work." },
-  { id: "q10", q: "Put these in order from smallest to largest: 0.4, 3/8, 45%, 0.38." },
-  { id: "q11", q: "What does a thermometer measure, and how does a mercury thermometer work?" },
-  { id: "q12", q: "Explain what a password manager is to someone who has never used one." },
+  { id: "q1", q: "Explain in your own words what an algorithm is and give one everyday example." },
+  { id: "q2", q: "A laptop costs $800 and is discounted by 15%. What is the final price? Show your calculation." },
+  { id: "q3", q: "What is the main difference between RAM and permanent storage such as an SSD?" },
+  { id: "q4", q: "A class has 24 students. If 3/8 of them are absent, how many students are present?" },
+  { id: "q5", q: "Describe two advantages and one disadvantage of using cloud computing." },
+  { id: "q6", q: "What is the purpose of a database, and why is structured data useful?" },
+  { id: "q7", q: "A car travels 180 km in 3 hours. What is its average speed in km/h?" },
+  { id: "q8", q: "Explain one practical way to protect a personal account from unauthorized access." },
+  { id: "q9", q: "Compare renewable and non-renewable energy sources and give one example of each." },
+  { id: "q10", q: "Write a short paragraph explaining why testing is important when developing software." },
 ];

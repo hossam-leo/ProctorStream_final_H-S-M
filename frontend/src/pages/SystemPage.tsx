@@ -1,20 +1,12 @@
-import { Badge, ErrorNotice, Loading, PageHeader, Panel, useAsync } from "../components/ui";
-import { api } from "../lib/api";
-import { fmtBytes, fmtDateTime, fmtInt, titleCase } from "../lib/format";
+import { Badge, ErrorNotice, Loading, PageHeader, Panel, StatGrid, useAsync } from "../components/ui";
+import { api, type Metrics, type SystemStatus } from "../lib/api";
+import { fmtBytes, fmtDateTime, fmtInt, plainText, titleCase } from "../lib/format";
 
-interface Status {
-  health: { status: string; version: string; contracts: string[]; checks: Record<string, string> };
-  schema_revision: string;
-  row_counts: Record<string, number>;
-  storage: { backend: string; used_bytes: number; stored_recordings: number };
-  channels: string[];
-  consent_version: string;
-  pipeline: { stage: string; state: "available" | "not_built" }[];
-}
 interface AuditRow { at: string; actor: string; action: string; entity_type: string; entity_id: string | null; details: Record<string, unknown> | null }
 
 export default function SystemPage() {
-  const st = useAsync(() => api.get<Status>("/system/status"), []);
+  const st = useAsync(() => api.get<SystemStatus>("/system/status"), []);
+  const metrics = useAsync(() => api.get<Metrics>("/metrics"), []);
   const audit = useAsync(() => api.get<AuditRow[]>("/audit?limit=50"), []);
   if (st.loading && !st.data) return <Loading />;
   if (st.error || !st.data) return <ErrorNotice message={st.error ?? ""} onRetry={st.reload} />;
@@ -22,10 +14,71 @@ export default function SystemPage() {
   return (
     <>
       <PageHeader
-        title="System status"
-        description="Service health, what parts of the pipeline exist in this build, and the audit trail."
-        actions={<button className="btn" onClick={() => { st.reload(); audit.reload(); }}>Refresh</button>}
+        title="System health"
+        description="Is the platform healthy, what is it processing, and what is measured versus not yet instrumented in this build."
+        actions={<button className="btn" onClick={() => { st.reload(); audit.reload(); metrics.reload(); }}>Refresh</button>}
       />
+      <div className={`notice ${d.health.status === "ok" ? "notice-ok" : "notice-warn"}`} style={{ marginBottom: 20 }}>
+        <strong>{d.health.status === "ok" ? "All services are healthy." : "One or more services are degraded."}</strong>{" "}
+        {Object.entries(d.health.checks).map(([k, v]) => `${titleCase(k)}: ${v === "ok" ? "connected" : v}`).join(" · ")}
+      </div>
+      <Panel
+        title="Pipeline metrics"
+        description="Live counters from the metrics endpoint. Anything this environment cannot measure is marked, never shown as zero."
+        actions={metrics.data && <span className="faint small">as of {fmtDateTime(metrics.data.time)}</span>}
+      >
+        {metrics.loading && !metrics.data ? (
+          <Loading />
+        ) : metrics.error || !metrics.data ? (
+          <ErrorNotice message={metrics.error ?? "Metrics unavailable"} onRetry={metrics.reload} />
+        ) : (
+          <>
+            <StatGrid
+              items={[
+                { label: "Active sessions", value: fmtInt(metrics.data.active_sessions), note: "in flight", tone: "accent" },
+                { label: "Events processed", value: fmtInt(metrics.data.event_count_total), note: "accepted, all sessions" },
+                {
+                  label: "Rejected or dropped events",
+                  value: fmtInt(metrics.data.dropped_or_rejected_events_total),
+                  tone: metrics.data.dropped_or_rejected_events_total > 0 ? "warn" : "ok",
+                  note: "failed validation or ingest",
+                },
+                {
+                  label: "Unknown detector events",
+                  value: fmtInt(metrics.data.detector_unknown_events_total),
+                  note: "detector could not decide",
+                },
+                {
+                  label: "Degraded sessions",
+                  value: metrics.data.degraded_sessions == null ? <span className="unknown-tag">Not measured</span> : fmtInt(metrics.data.degraded_sessions),
+                  note: "assessed with a missing channel",
+                  tone: metrics.data.degraded_sessions ? "warn" : undefined,
+                },
+              ]}
+            />
+            <div className="three-col" style={{ marginTop: 18 }}>
+              {[
+                ["Queue depth", metrics.data.queue_depth, "", "No background job queue counter is wired up in this build."],
+                ["Inference latency", metrics.data.inference_latency_ms, " ms", "Not benchmarked here; see the benchmark notes."],
+                ["Ingest latency", metrics.data.ingest_latency_ms, " ms", "Not benchmarked here; see the benchmark notes."],
+              ].map(([name, v, unit, why]) => (
+                <div className="summary-strip" key={String(name)} style={{ gridTemplateColumns: "1fr" }}>
+                  <div>
+                    <div className="k">{name}</div>
+                    <div className="v">{v == null ? <span className="unknown-tag">Not measured</span> : `${v}${unit}`}</div>
+                    {v == null && <div className="faint small" style={{ marginTop: 6 }}>{why}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Panel>
+      <Panel title="Host resources" description="GPU, CPU, memory and worker telemetry." >
+        <span className="unknown-tag">Not instrumented</span>
+        <span className="muted" style={{ marginLeft: 10 }}>This build does not expose host resource telemetry, so nothing is charted here rather than showing invented values.</span>
+      </Panel>
+      <div style={{ height: 20 }} />
       <div className="grid-3">
         <Panel title="Service">
           <dl className="dl">
@@ -59,8 +112,8 @@ export default function SystemPage() {
           <tbody>
             {d.pipeline.map((p) => (
               <tr key={p.stage}>
-                <td>{p.stage}</td>
-                <td style={{ textAlign: "right" }}>{p.state === "available" ? <Badge tone="ok">Available</Badge> : <Badge>Not built yet</Badge>}</td>
+                <td>{plainText(p.stage)}</td>
+                <td style={{ textAlign: "right" }}>{p.state === "available" ? <Badge tone="ok">Available</Badge> : p.state === "not_installed" ? <Badge tone="warn">Not installed</Badge> : <Badge>Not built yet</Badge>}</td>
               </tr>
             ))}
           </tbody>

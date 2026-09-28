@@ -2,9 +2,9 @@ import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AssessmentPanel } from "../components/AssessmentPanel";
 import { Timeline, type Lane } from "../components/Timeline";
-import { Badge, Empty, ErrorNotice, Loading, Modal, PageHeader, Panel, StatusBadge, useAsync, useToast } from "../components/ui";
-import { API, api, type SessionDetail, type TelemetryEvent } from "../lib/api";
-import { fmtBytes, fmtClock, fmtDate, fmtDateTime, fmtDuration, titleCase, VIOLATION_LABEL, WEBCAM_LABEL } from "../lib/format";
+import { Badge, Empty, ErrorNotice, Loading, Modal, PageHeader, Panel, RiskBadge, StatusBadge, useAsync, useToast } from "../components/ui";
+import { API, api, type Assessment, type SessionDetail, type TelemetryEvent } from "../lib/api";
+import { CHART, fmtBytes, fmtClock, fmtDate, fmtDateTime, fmtDuration, REC_LABEL, recTone, riskTone, titleCase, VIOLATION_LABEL, WEBCAM_LABEL } from "../lib/format";
 
 interface SignalTimeline {
   bin_ms: number;
@@ -13,8 +13,9 @@ interface SignalTimeline {
   lanes: { label: string; intervals: { start_ms: number; end_ms: number }[] }[];
 }
 
-const TRUTH_COLOR = "#b42318";
-const SIGNAL_COLOR = "#163a52";
+const TRUTH_COLOR = CHART.truth;
+const SIGNAL_COLOR = CHART.accent;
+const FLAG_COLOR: Record<string, string> = { bad: CHART.truth, warn: CHART.cue, info: CHART.accent2, ok: "#42d392", neutral: CHART.textDim };
 
 function telemetryLanes(events: TelemetryEvent[], durMs: number): Lane[] {
   const hidden: { start: number; end: number }[] = [];
@@ -45,9 +46,9 @@ function telemetryLanes(events: TelemetryEvent[], durMs: number): Lane[] {
     .map((e) => ({ start: e.ts_ms - Number(e.payload.window_s) * 1000, end: e.ts_ms, title: `${e.payload.keystrokes} keys` }));
   return [
     { label: "Tab hidden", color: SIGNAL_COLOR, intervals: hidden },
-    { label: "Not full screen", color: "#8a96a3", intervals: fsOff },
+    { label: "Not full screen", color: CHART.textDim, intervals: fsOff },
     { label: "Paste", color: SIGNAL_COLOR, marks: pastes },
-    { label: "Typing", color: "#9fb3c8", intervals: keys },
+    { label: "Typing", color: CHART.text, intervals: keys },
   ];
 }
 
@@ -71,6 +72,13 @@ export default function SessionDetailPage() {
     },
     [s?.id, s?.status],
   );
+  const sealed = !!s && s.source === "SIMULATED" && s.split === "holdout";
+  const assess = useAsync(
+    () => (!s || sealed ? Promise.resolve(null) : api.get<Assessment | null>(`/sessions/${id}/assessment`)),
+    [s?.id, s?.status],
+  );
+  const a = assess.data;
+  const [activeFlag, setActiveFlag] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playhead, setPlayhead] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -80,6 +88,20 @@ export default function SessionDetailPage() {
   const lanes = useMemo<Lane[]>(() => {
     if (!s) return [];
     const out: Lane[] = [];
+    // Risk flags first: the reviewer sees what the engine flagged before the raw signals beneath it.
+    if (a && a.flags.length) {
+      out.push({
+        label: "Risk flags",
+        color: CHART.cue,
+        intervals: a.flags.map((f) => ({
+          start: f.t_start_ms,
+          end: f.t_end_ms,
+          id: f.flag_id,
+          color: FLAG_COLOR[riskTone(f.resulting_level)],
+          title: `${titleCase(f.type)} · ${f.resulting_level ?? ""} · rule ${f.rule_id ?? "—"}`,
+        })),
+      });
+    }
     const ivs = s.label?.intervals ?? [];
     out.push({
       label: "Ground truth",
@@ -89,7 +111,7 @@ export default function SessionDetailPage() {
     if (s.source === "MOCK" && s.episodes.length) {
       out.push({
         label: "Cue shown",
-        color: "#c98a2b",
+        color: CHART.cue,
         marks: s.episodes.filter((e) => e.shown_at_ms != null).map((e) => ({ t: e.shown_at_ms!, title: `Cue ${e.episode_no} shown` })),
       });
     }
@@ -99,12 +121,12 @@ export default function SessionDetailPage() {
       const lanes = s.source === "MOCK" ? signals.data.lanes.filter((l) => l.label !== "Tab hidden") : signals.data.lanes;
       out.push(...lanes.map((l) => ({
         label: l.label,
-        color: l.label === "Channel unknown" ? "#b8c2cc" : SIGNAL_COLOR,
+        color: l.label === "Channel unknown" ? CHART.textDim : SIGNAL_COLOR,
         intervals: l.intervals.map((i) => ({ start: i.start_ms, end: i.end_ms })),
       })));
     }
     return out;
-  }, [s, events.data, signals.data, durMs]);
+  }, [s, a, events.data, signals.data, durMs]);
 
   if (sess.loading && !s) return <Loading />;
   if (sess.error || !s) return <ErrorNotice message={sess.error ?? "Not found"} onRetry={sess.reload} />;
@@ -112,6 +134,13 @@ export default function SessionDetailPage() {
   const video = s.recordings.find((r) => r.kind === "webcam_av" && r.status === "STORED");
   const photo = s.recordings.find((r) => r.kind === "enrollment_image" && r.status === "STORED");
   const mock = s.source === "MOCK";
+  const seekMs = (ms: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = ms / 1000;
+      setPlayhead(ms);
+      void videoRef.current.play?.().catch(() => undefined);
+    }
+  };
 
   async function confirmConsent() {
     setBusy(true);
@@ -159,6 +188,8 @@ export default function SessionDetailPage() {
         description={
           <span className="row" style={{ gap: 10 }}>
             <StatusBadge status={s.status} />
+            {a && <RiskBadge level={a.risk_level} degraded={a.degraded} />}
+            {a && <Badge tone={recTone(a.recommendation)} plain>{REC_LABEL[a.recommendation]}</Badge>}
             {mock ? (
               <span>
                 {s.participant_id ? <Link to={`/participants/${s.participant_id}`}>{s.participant_code}</Link> : "—"}, script {s.script_id}
@@ -211,18 +242,31 @@ export default function SessionDetailPage() {
                   lanes={lanes}
                   playheadMs={playhead}
                   onSeek={video ? (ms) => { if (videoRef.current) { videoRef.current.currentTime = ms / 1000; setPlayhead(ms); } } : undefined}
+                  highlightId={activeFlag}
+                  onIntervalClick={(fid, start) => { setActiveFlag(fid); if (video) seekMs(start); }}
                 />
                 <div className="legend">
                   <span><i style={{ background: TRUTH_COLOR }} />Ground truth violation</span>
                   <span><i style={{ background: SIGNAL_COLOR }} />Observed signal</span>
-                  {mock && <span><i style={{ background: "#c98a2b" }} />Script cue</span>}
+                  {a && a.flags.length > 0 && <span><i style={{ background: CHART.cue }} />Risk flag (click to inspect)</span>}
+                  {mock && <span><i style={{ background: CHART.cue }} />Script cue</span>}
                 </div>
               </>
             ) : (
               <p className="muted" style={{ margin: 0 }}>The timeline appears once the session has been recorded.</p>
             )}
           </Panel>
-          <AssessmentPanel session={s} onChange={sess.reload} />
+          <AssessmentPanel
+            session={s}
+            onChange={sess.reload}
+            assessment={a}
+            assessmentLoading={assess.loading}
+            reloadAssessment={assess.reload}
+            hasVideo={!!video}
+            onSeekMs={seekMs}
+            activeFlagId={activeFlag}
+            onSelectFlag={setActiveFlag}
+          />
           {mock && (
             <Panel title="Status history" flush>
               <div className="table-wrap">
@@ -243,6 +287,29 @@ export default function SessionDetailPage() {
         </div>
 
         <div>
+          <Panel title="Risk summary">
+            {assess.loading && !a ? (
+              <Loading />
+            ) : a ? (
+              <div className="stack">
+                <RiskBadge level={a.risk_level} degraded={a.degraded} size="lg" />
+                <dl className="dl">
+                  <dt>Recommendation</dt><dd><Badge tone={recTone(a.recommendation)} plain>{REC_LABEL[a.recommendation]}</Badge></dd>
+                  <dt>Flags</dt><dd className="num">{a.flags.length}</dd>
+                  <dt>Channels available</dt><dd className="num">{a.channels_available.length}</dd>
+                  <dt>Channels missing</dt><dd className="num">{a.channels_missing.length > 0 ? a.channels_missing.map(titleCase).join(", ") : "None"}</dd>
+                </dl>
+                <a className="btn btn-sm" href={`${API}/sessions/${s.id}/report`} target="_blank" rel="noreferrer">Open reviewer report</a>
+              </div>
+            ) : sealed ? (
+              <span className="unknown-tag">Sealed holdout</span>
+            ) : (
+              <div className="stack">
+                <span className="unknown-tag">Unknown — not assessed yet</span>
+                <p className="small muted" style={{ margin: 0 }}>Risk is only shown once a recording has been analysed.</p>
+              </div>
+            )}
+          </Panel>
           <Panel title="Ground truth">
             {!mock && s.split === "holdout" ? (
               <p className="small muted" style={{ margin: 0 }}>

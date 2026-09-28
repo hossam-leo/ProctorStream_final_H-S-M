@@ -1,13 +1,10 @@
-import { Badge, ErrorNotice, Facts, Loading, PageHeader, Panel, useAsync } from "../components/ui";
+import { ErrorNotice, Facts, Loading, PageHeader, Panel, RiskBadge, useAsync } from "../components/ui";
 import { api } from "../lib/api";
 import { titleCase } from "../lib/format";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
 
-function levelTone(level: string): string {
-  return level === "HIGH" ? "bad" : level === "ELEVATED" ? "warn" : level === "WATCH" ? "info" : "ok";
-}
 
 export default function ModelPage() {
   const info = useAsync(() => api.get<Any>("/model-info"), []);
@@ -46,7 +43,7 @@ export default function ModelPage() {
             <tbody>
               {m.risk_levels.map((lvl: string) => (
                 <tr key={lvl}>
-                  <td><Badge plain tone={levelTone(lvl)}>{lvl}</Badge></td>
+                  <td><RiskBadge level={lvl} size="sm" /></td>
                   <td>{m.recommendations[lvl]}</td>
                 </tr>
               ))}
@@ -72,11 +69,11 @@ export default function ModelPage() {
                     <td className="small num nowrap">{r.rule_id}</td>
                     <td className="small">{r.flag_type}</td>
                     <td className="small muted">{titleCase(r.channel)}</td>
-                    <td><Badge plain tone={levelTone(r.base_level)}>{r.base_level}</Badge></td>
+                    <td><RiskBadge level={r.base_level} size="sm" /></td>
                     <td className="small">
                       {r.escalate.length === 0 ? <span className="muted">—</span> : r.escalate.map((e: Any, i: number) => (
                         <div key={i}>
-                          → <Badge plain tone={levelTone(e.then_level)}>{e.then_level}</Badge>{" "}
+                          → <RiskBadge level={e.then_level} size="sm" />{" "}
                           {e.if_duration_s_gte != null && `if sustained ≥${e.if_duration_s_gte}s`}
                           {e.if_count_in_session_gte != null && `if ≥${e.if_count_in_session_gte} occurrences`}
                         </div>
@@ -100,7 +97,7 @@ export default function ModelPage() {
                 {m.multi_flag_escalation.map((e: Any, i: number) => (
                   <tr key={i}>
                     <td className="small">≥{e.if_distinct_rule_types_gte} distinct rule types triggered</td>
-                    <td><Badge plain tone={levelTone(e.min_level)}>{e.min_level}</Badge></td>
+                    <td><RiskBadge level={e.min_level} size="sm" /></td>
                   </tr>
                 ))}
               </tbody>

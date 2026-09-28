@@ -4,7 +4,7 @@ import { Steps } from "../components/Steps";
 import { Timeline } from "../components/Timeline";
 import { Badge, ErrorNotice, Loading, Modal, PageHeader, Panel, useAsync, useToast } from "../components/ui";
 import { api, uploadFile, type Episode, type ScriptsDoc, type SessionDetail } from "../lib/api";
-import { fmtBytes, fmtClock, VIOLATION_LABEL } from "../lib/format";
+import { CHART, fmtBytes, fmtClock, VIOLATION_LABEL } from "../lib/format";
 import { QUIZ } from "../lib/quiz";
 import { TelemetryCollector, type TelemetryStats } from "../lib/telemetry";
 
@@ -306,7 +306,7 @@ export default function RecordPage() {
   const header = (
     <PageHeader
       crumbs={<><Link to="/sessions">Sessions</Link> / <Link to={`/sessions/${s.id}`}>{s.id}</Link></>}
-      title={phase === "recording" ? "Recording" : phase === "review" ? "Review and upload" : "Check equipment"}
+      title={phase === "recording" ? "Live capture · Recording" : phase === "review" ? "Live capture · Review and upload" : "Live capture · Check equipment"}
       description={`${s.participant_code}, ${script?.title ?? s.script_id}`}
     />
   );
@@ -351,7 +351,7 @@ export default function RecordPage() {
   const nextCue = phase === "recording" ? episodes.find((e) => e.scheduled_start_ms > elapsed) : undefined;
   const scriptLane = {
     label: "Script cues",
-    color: "#c98a2b",
+    color: CHART.cue,
     intervals: episodes.map((e) => ({
       start: e.scheduled_start_ms,
       end: e.scheduled_end_ms > 0 ? e.scheduled_end_ms : Math.max(elapsed, minS * 1000),
@@ -364,6 +364,37 @@ export default function RecordPage() {
     <>
       {header}
       <Steps current={phase === "check" ? 2 : phase === "recording" ? 3 : 4} />
+
+      {phase !== "review" && (
+        <div className="capture-strip" role="status" aria-label="Capture status">
+          <div className="capture-cell">
+            <span className="k">Session</span>
+            {phase === "recording" ? <Badge tone="live">Recording · {fmtClock(elapsed)}</Badge> : <Badge tone="neutral">Ready to record</Badge>}
+          </div>
+          <div className="capture-cell">
+            <span className="k">Camera</span>
+            <Badge tone={trackLost ? "bad" : stream ? "ok" : "neutral"}>{trackLost ? "Signal lost" : stream ? `On${resolution ? ` · ${resolution.h}p` : ""}` : "Off"}</Badge>
+          </div>
+          <div className="capture-cell">
+            <span className="k">Microphone</span>
+            <Badge tone={trackLost ? "bad" : micHeard ? "ok" : stream ? "warn" : "neutral"}>{trackLost ? "Signal lost" : micHeard ? "Picking up audio" : stream ? "No audio heard yet" : "Off"}</Badge>
+          </div>
+          <div className="capture-cell">
+            <span className="k">Telemetry</span>
+            {phase !== "recording" ? (
+              <Badge tone="neutral">Starts with recording</Badge>
+            ) : tele ? (
+              <Badge tone={tele.lastError ? "warn" : "ok"}>{tele.lastError ? "Retrying" : "Streaming"} · {tele.sent} sent</Badge>
+            ) : (
+              <Badge tone="neutral">Unknown</Badge>
+            )}
+          </div>
+          <div className="capture-cell">
+            <span className="k">Enrolment photo</span>
+            <Badge tone={photoUrl ? "ok" : "warn"}>{photoUrl ? "Saved" : "Needed"}</Badge>
+          </div>
+        </div>
+      )}
 
       {phase === "check" && (
         <div className="console">

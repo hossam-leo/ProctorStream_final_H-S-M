@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Badge, Empty, ErrorNotice, Loading, PageHeader, Panel, StatusBadge, useAsync } from "../components/ui";
+import { Badge, Empty, ErrorNotice, Loading, PageHeader, Panel, RiskBadge, StatusBadge, useAsync } from "../components/ui";
 import { api, type Page, type Session } from "../lib/api";
 import { fmtDateTime, fmtDuration, LIGHTING, REC_LABEL, recTone, STATUS_LABEL, titleCase, WEBCAMS, WEBCAM_LABEL } from "../lib/format";
 
@@ -37,7 +37,7 @@ export default function SessionsPage() {
     <>
       <PageHeader
         title="Sessions"
-        description="Recorded mock sessions from consented volunteers, and simulated sessions from the generator."
+        description="Recorded sessions from consented volunteers, and simulated sessions from the generator."
         actions={<Link className="btn btn-primary" to="/sessions/new">New session</Link>}
       />
       <Panel flush>
@@ -118,9 +118,9 @@ export default function SessionsPage() {
                       </td>
                       <td className="nowrap">
                         {s.recommendation ? (
-                          <><strong>{s.risk_level ?? s.risk?.toFixed(2)}</strong>{" "}
-                            {s.degraded && <span className="small faint">degraded</span>}{" "}
-                            <Badge tone={recTone(s.recommendation)} plain>{REC_LABEL[s.recommendation]}</Badge></>
+                          <span className="row" style={{ gap: 8 }}>
+                            <RiskBadge level={s.risk_level} degraded={s.degraded} size="sm" />
+                            <Badge tone={recTone(s.recommendation)} plain>{REC_LABEL[s.recommendation]}</Badge></span>
                         ) : <span className="faint">—</span>}
                       </td>
                       {source === "SIMULATED" && <td>{titleCase(s.split)}</td>}
